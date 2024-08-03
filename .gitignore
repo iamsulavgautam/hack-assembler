@@ -1,1 +1,6 @@
 /target
+/*.asm
+/*.hack
+/comp
+/asm
+/Cargo.lock
