@@ -58,13 +58,18 @@ lazy_static! {
 }
 
 fn main() {
-    let initial_check = argument_handling();
+    let initial_check: (String, String) = argument_handling();
     let file: String = initial_check.0;
     let file_name: String = initial_check.1;
 
     let comments_and_whitespaces = Regex::new(r"(//.*)|( )").unwrap();
     let file = comments_and_whitespaces.replace_all(&file, "");
-    let code: Vec<&str> = file.split(&['\n']).filter(|&r| r != "").collect();
+    let mut code: Vec<&str> = file.split(&['\n']).filter(|&r| r != "").collect();
+    let code: Vec<String> = symbols(&mut code);
+
+    for i in &code {
+        println!("{i}");
+    }
 
     let mut output = match File::create(&file_name) {
         Err(error) => panic!("couldn't create {file_name}.hack: {error}"),
@@ -80,6 +85,101 @@ fn main() {
     }
 
     println!("successfully assembled at: {file_name}");
+}
+
+fn symbols(code_with_symbols: &mut Vec<&str>) -> Vec<String> {
+    let mut symbol_table: HashMap<&str, usize> = HashMap::new();
+    symbol_table.insert("R0", 0);
+    symbol_table.insert("R1", 1);
+    symbol_table.insert("R2", 2);
+    symbol_table.insert("R3", 3);
+    symbol_table.insert("R4", 4);
+    symbol_table.insert("R5", 5);
+    symbol_table.insert("R6", 6);
+    symbol_table.insert("R7", 7);
+    symbol_table.insert("R8", 8);
+    symbol_table.insert("R9", 9);
+    symbol_table.insert("R10", 10);
+    symbol_table.insert("R11", 11);
+    symbol_table.insert("R12", 12);
+    symbol_table.insert("R13", 13);
+    symbol_table.insert("R14", 14);
+    symbol_table.insert("R15", 15);
+
+    symbol_table.insert("SCREEN", 16384);
+    symbol_table.insert("KBD", 24576);
+
+    symbol_table.insert("SP", 0);
+    symbol_table.insert("LCL", 1);
+    symbol_table.insert("ARG", 2);
+    symbol_table.insert("THIS", 3);
+    symbol_table.insert("THAT", 4);
+
+    let mut line_no: usize = 1;
+    let mut label_index: Vec<usize> = Vec::new();
+
+    // reading and removing lables
+    loop {
+        let mut line: &str = &code_with_symbols[line_no - 1];
+        line_no += 1;
+
+        if line.contains("(") {
+            line = &line[1..line.len() - 1];
+            let address: usize = line_no - 2;
+
+            symbol_table.insert(line, address);
+            label_index.push(line_no - 1);
+            code_with_symbols.remove(line_no - 2); // line_no starts at 1 and is inc at beginning
+        }
+
+        if line_no == code_with_symbols.len() {
+            break;
+        }
+    }
+
+    // reading and inserting variables if new
+    let mut no_of_new_variables: usize = 0;
+    let mut line_no: usize = 0;
+    let mut code_without_symbols: Vec<String> = Vec::new();
+    loop {
+        let mut line: &str = &code_with_symbols[line_no];
+        line_no += 1;
+
+        if line.contains("@") {
+            // checking if just an address
+            match line[1..].parse::<usize>() {
+                Ok(_) => {
+                    code_without_symbols.push(line.to_string());
+                    continue;
+                }
+                _ => (),
+            }
+        }
+
+        if line.contains("@") && (symbol_table.contains_key(&line[1..line.len()]) == false) {
+            let address = 16 + no_of_new_variables;
+            line = &line[1..];
+            symbol_table.insert(line, address);
+            let new_inst: String = format!("@{}", address);
+
+            code_without_symbols.push(new_inst);
+
+            no_of_new_variables += 1;
+            continue;
+        } else if line.contains("@") && (symbol_table.contains_key(&line[1..line.len()]) == true) {
+            let address = symbol_table.get(&line[1..]).unwrap();
+            let new_inst = format!("@{}", address);
+
+            code_without_symbols.push(new_inst);
+            continue;
+        }
+        code_without_symbols.push(line.to_string());
+        if line_no == code_with_symbols.len() {
+            break;
+        }
+    }
+
+    return code_without_symbols;
 }
 
 fn argument_handling() -> (String, String) {
